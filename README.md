@@ -1,6 +1,6 @@
 # Sauce
 
-This OS is a little fun project built with `archiso` and ment for tinkering.
+This OS is a little fun project built with `archiso` and is ment for tinkering.
 
 ## Features
 
