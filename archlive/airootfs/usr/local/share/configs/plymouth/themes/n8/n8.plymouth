@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=n8
+Description=Dandelion parachutes floating around 
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/n8
+ScriptFile=/usr/share/plymouth/themes/n8/n8.script

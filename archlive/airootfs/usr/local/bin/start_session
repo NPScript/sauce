@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# --- Start Session --------------------------
+# This script starts the session and runs the
+# installer script in a simple terminal
+# --------------------------------------------
+
+feh --bg-fill /usr/local/share/background.png
+st installer &
+dwm

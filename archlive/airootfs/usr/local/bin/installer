@@ -1,0 +1,221 @@
+#!/bin/sh
+
+# --- Installer Script --------------------------------
+# This script is executed after the session is running.
+# It mainly dmenu to get input from the user
+# -----------------------------------------------------
+
+
+echo "Welcome to Sauce"
+
+keymodel=$(localectl list-x11-keymap-variants | dmenu -p "Select keyboard model")
+keylayout=$(localectl list-x11-keymap-layouts | dmenu -p "Select keyboard layouts")
+
+setxkbmap $keylayout $keymodel
+
+mode="BIOS"
+
+ls /sys/firmware/efi/efivars && echo "Detected UEFI mode" && mode="UEFI" || echo "Detected BIOS mode"
+
+timedatectl set-ntp true && echo "Update system clock"
+
+echo "Formatting the Disk…"
+
+disk=$(lsblk -d -o NAME,TYPE,SIZE,MODEL | grep disk | dmenu | awk '{print "/dev/"$1}')
+
+if [ $mode = "UEFI" ]; then
+sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk ${disk}
+g
+n
+
+
++512M
+t
+1
+n
+
+
++1G
+t
+
+19
+n
+
+
+
+t
+
+24
+w
+EOF
+
+mkfs.ext4 ${disk}3
+mkswap ${disk}2
+
+mount ${disk}3 /mnt
+swapon ${disk}2
+
+else
+sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk ${disk}
+o
+n
+e
+
+
++1G
+t
+82
+n
+p
+
+
+
+t
+
+83
+w
+EOF
+
+mkfs.ext4 ${disk}2
+mkswap ${disk}1
+
+mount ${disk}2 /mnt
+swapon ${disk}1
+
+fi
+
+pacstrap /mnt base linux linux-firmware
+
+echo "Generate /etc/fstab"
+
+genfstab -U /mnt >> /mnt/etc/fstab
+
+echo "Configure Zimezone"
+
+region=$(ls /mnt/usr/share/zoneinfo/ | dmenu -p "Select your Region")
+
+if [ -d "/mnt/usr/share/zoneinfo/$region" ]; then
+	city=$(ls /mnt/usr/share/zoneinfo/$region | dmenu -p "Select your Region")
+	arch-chroot /mnt ln -sf /usr/share/zone-info/$region/$city /etc/localetime
+else
+	arch-chroot /mnt ln -sf /usr/share/zone-info/$region /etc/localetime
+fi
+
+arch-chroot /mnt hwclock --systohc
+
+loc=$(cat /mnt/etc/locale.gen | grep "UTF-8\|ISO" | dmenu | sed 's/#\s*//g')
+echo $loc >> /mnt/etc/locale.gen
+
+arch-chroot /mnt locale-gen
+
+echo "LANG=$(printf "$loc" | awk '{print $1}')" >> /mnt/etc/locale.conf
+
+echo "KEYMAP=us" >> /mnt/etc/vconsole.conf
+
+echo "Configure Network"
+
+hn=$(printf "" | dmenu -p "Set Hostname")
+echo $hn >> /mnt/etc/hostname
+
+echo "127.0.0.1		localhost\n::1		localhost" >> /mnt/etc/hosts
+
+arch-chroot /mnt mkinitcpio -P
+
+echo "Updateing System"
+
+arch-chroot /mnt pacman -Syu --noconfirm
+
+echo "Installing NetworkManager"
+arch-chroot /mnt pacman -S networkmanager --noconfirm
+arch-chroot /mnt systemctl enable NetworkManager
+
+echo "Installing sudo"
+arch-chroot /mnt pacman -S sudo --noconfirm
+
+echo "Create sudo Group"
+
+arch-chroot /mnt groupadd sudo
+echo "%sudo  ALL=(ALL) NOPASSWD:ALL" >> /mnt/etc/sudoers
+
+echo "Create User"
+
+name=$(printf "" | dmenu -p "Username")
+
+arch-chroot /mnt useradd -m -G sudo $name
+arch-chroot /mnt passwd $name
+
+echo "setxkbmap $keylayout $keymodel" >> /mnt/home/$name/.xinitrc
+echo "feh --bg-fill /usr/share/background.png"
+cp /usr/local/share/background.png /mnt/usr/share/
+echo "exec dwm" >> /mnt/home/$name/.xinitrc
+
+mkdir -p /mnt/usr/src/suckless
+
+echo "Installing base-devel"
+arch-chroot /mnt pacman -S base-devel --noconfirm
+
+echo "Installing Xorg"
+arch-chroot /mnt pacman -S xorg xorg-server xorg-xinit --noconfirm
+
+echo "Installing git"
+arch-chroot /mnt pacman -S git --noconfirm
+
+echo "Installing dwm"
+arch-chroot /mnt git clone https://github.com/NPScript/dwm.git /usr/src/suckless/dwm
+arch-chroot /mnt make -C /usr/src/suckless/dwm/ install
+
+echo "Installing st"
+arch-chroot /mnt git clone https://github.com/NPScript/st.git /usr/src/suckless/st
+arch-chroot /mnt make -C /usr/src/suckless/st/ install
+
+echo "Installing st"
+arch-chroot /mnt git clone https://github.com/NPScript/dmenu.git /usr/src/suckless/dmenu
+arch-chroot /mnt make -C /usr/src/suckless/dmenu/ install
+
+echo "Installing yay"
+arch-chroot /mnt su $name -c 'git clone https://aur.archlinux.org/yay.git ~/yay'
+arch-chroot /mnt su $name -c 'cd ~/yay && makepkg -si --noconfirm'
+rm -rf /mnt/home/$name/yay
+
+echo "Install Plymouth"
+arch-chroot /mnt su $name -c 'yay -S plymouth --noconfirm'
+sed -i "s/^HOOKS=(base udev/HOOKS=(base udev plymouth/g" /mnt/etc/mkinitcpio.conf
+rm -rf /mnt/usr/plymouth
+cp -r /usr/local/share/configs/plymouth /mnt/usr/share/
+arch-chroot /mnt pacman -S ttf-dejavu --noconfirm
+arch-chroot /mnt mkinitcpio -P
+
+echo "Installing Greetd"
+arch-chroot /mnt su $name -c 'yay -S greetd --noconfirm'
+arch-chroot /mnt su $name -c 'yay -S greetd-tuigreet-bin --noconfirm'
+cp /usr/local/share/configs/greetd.conf /mnt/etc/greetd/config.toml
+arch-chroot /mnt systemctl enable greetd.service
+
+echo "Installing Fonts"
+
+cp -r /usr/share/fonts/TTF /mnt/usr/share/fonts/
+
+echo "Installing Software"
+
+arch-chroot /mnt pacman -S feh sxiv qutebrowser neovim neomutt cmus boost ncurses --noconfirm
+arch-chroot /mnt su $name -c 'yay -S mutt-wizard --noconfirm'
+arch-chroot /mnt git clone https://github.com/NPScript/SFM /usr/src/suckless/sfm
+arch-chroot /mnt make -C /usr/src/suckless/sfm install
+arch-chroot /mnt pacman -S adwaita-icon-theme --noconfirm
+mkdir -p /mnt/home/$name/.config/cmus/
+cp /usr/local/share/configs/cmusrc /mnt/home/$name/.config/cmus/rc
+
+echo "Installing GRUB"
+
+arch-chroot /mnt pacman -S grub --noconfirm
+arch-chroot /mnt grub-install --target=i386-pc $disk
+arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+
+echo "Restart System"
+umount /mnt
+
+po=$(printf 'yes\nno' | dmenu -p "Poweroff?")
+
+if [ $po = "yes" ]; then
+	poweroff
+fi
