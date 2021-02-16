@@ -1,6 +1,6 @@
 # Sauce
 
-[Sauce](logo.svg)
+![Sauce](logo.svg)
 
 This OS is a little fun project built with `archiso` and ment for tinkering.
 
