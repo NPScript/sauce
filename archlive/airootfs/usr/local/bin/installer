@@ -4,22 +4,23 @@
 # This script is executed after the session is running.
 # It mainly dmenu to get input from the user
 # -----------------------------------------------------
-
-
-echo "Welcome to Sauce"
+st &
 
 keymodel=$(localectl list-x11-keymap-variants | dmenu -p "Select keyboard model")
 keylayout=$(localectl list-x11-keymap-layouts | dmenu -p "Select keyboard layouts")
 
 setxkbmap $keylayout $keymodel
 
+printf "\033[H\033[J" > /dev/pts/1
+echo "Welcome to Sauce" > /dev/pts/1
+
 mode="BIOS"
 
-ls /sys/firmware/efi/efivars && echo "Detected UEFI mode" && mode="UEFI" || echo "Detected BIOS mode"
+ls /sys/firmware/efi/efivars && echo "Detected UEFI mode" && mode="UEFI" || echo "Detected BIOS mode" > /dev/pts/1
 
-timedatectl set-ntp true && echo "Update system clock"
+timedatectl set-ntp true && echo "Update system clock" > /dev/pts/1
 
-echo "Formatting the Disk…"
+echo "Formatting the Disk…" > /dev/pts/1
 
 disk=$(lsblk -d -o NAME,TYPE,SIZE,MODEL | grep disk | dmenu | awk '{print "/dev/"$1}')
 
@@ -84,13 +85,15 @@ swapon ${disk}1
 
 fi
 
+echo "Bootstrap" > /dev/pts/1
+
 pacstrap /mnt base linux linux-firmware
 
-echo "Generate /etc/fstab"
+echo "Generate /etc/fstab" > /dev/pts/1
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-echo "Configure Zimezone"
+echo "Configure Zimezone" > /dev/pts/1
 
 region=$(ls /mnt/usr/share/zoneinfo/ | dmenu -p "Select your Region")
 
@@ -112,7 +115,7 @@ echo "LANG=$(printf "$loc" | awk '{print $1}')" >> /mnt/etc/locale.conf
 
 echo "KEYMAP=us" >> /mnt/etc/vconsole.conf
 
-echo "Configure Network"
+echo "Configure Network" > /dev/pts/1
 
 hn=$(printf "" | dmenu -p "Set Hostname")
 echo $hn >> /mnt/etc/hostname
@@ -121,63 +124,67 @@ echo "127.0.0.1		localhost\n::1		localhost" >> /mnt/etc/hosts
 
 arch-chroot /mnt mkinitcpio -P
 
-echo "Updateing System"
+echo "Updateing System" > /dev/pts/1
 
 arch-chroot /mnt pacman -Syu --noconfirm
 
-echo "Installing NetworkManager"
+echo "Installing NetworkManager" > /dev/pts/1
 arch-chroot /mnt pacman -S networkmanager --noconfirm
 arch-chroot /mnt systemctl enable NetworkManager
 
-echo "Installing sudo"
+echo "Installing Sudo" > /dev/pts/1
 arch-chroot /mnt pacman -S sudo --noconfirm
 
-echo "Create sudo Group"
+echo "Create sudo Group" > /dev/pts/1
 
 arch-chroot /mnt groupadd sudo
 echo "%sudo  ALL=(ALL) NOPASSWD:ALL" >> /mnt/etc/sudoers
 
-echo "Create User"
+echo "Create User" > /dev/pts/1
 
 name=$(printf "" | dmenu -p "Username")
 
 arch-chroot /mnt useradd -m -G sudo $name
-arch-chroot /mnt passwd $name
+
+while (true);
+do
+	st -g 80x24-0+40 -c floating passwd -R /mnt $name && break
+done
 
 echo "setxkbmap $keylayout $keymodel" >> /mnt/home/$name/.xinitrc
-echo "feh --bg-fill /usr/share/background.png"
+echo "feh --bg-fill /usr/share/background.png" >> /mnt/home/$name/.xinitrc
 cp /usr/local/share/background.png /mnt/usr/share/
 echo "exec dwm" >> /mnt/home/$name/.xinitrc
 
 mkdir -p /mnt/usr/src/suckless
 
-echo "Installing base-devel"
+echo "Installing base-devel" > /dev/pts/1
 arch-chroot /mnt pacman -S base-devel --noconfirm
 
-echo "Installing Xorg"
+echo "Installing Xorg" > /dev/pts/1
 arch-chroot /mnt pacman -S xorg xorg-server xorg-xinit --noconfirm
 
-echo "Installing git"
+echo "Installing git" > /dev/pts/1
 arch-chroot /mnt pacman -S git --noconfirm
 
-echo "Installing dwm"
+echo "Installing dwm" > /dev/pts/1
 arch-chroot /mnt git clone https://github.com/NPScript/dwm.git /usr/src/suckless/dwm
 arch-chroot /mnt make -C /usr/src/suckless/dwm/ install
 
-echo "Installing st"
+echo "Installing st" > /dev/pts/1
 arch-chroot /mnt git clone https://github.com/NPScript/st.git /usr/src/suckless/st
 arch-chroot /mnt make -C /usr/src/suckless/st/ install
 
-echo "Installing st"
+echo "Installing dmenu" > /dev/pts/1
 arch-chroot /mnt git clone https://github.com/NPScript/dmenu.git /usr/src/suckless/dmenu
 arch-chroot /mnt make -C /usr/src/suckless/dmenu/ install
 
-echo "Installing yay"
+echo "Installing yay" > /dev/pts/1
 arch-chroot /mnt su $name -c 'git clone https://aur.archlinux.org/yay.git ~/yay'
 arch-chroot /mnt su $name -c 'cd ~/yay && makepkg -si --noconfirm'
 rm -rf /mnt/home/$name/yay
 
-echo "Install Plymouth"
+echo "Install Plymouth" > /dev/pts/1
 arch-chroot /mnt su $name -c 'yay -S plymouth --noconfirm'
 sed -i "s/^HOOKS=(base udev/HOOKS=(base udev plymouth/g" /mnt/etc/mkinitcpio.conf
 rm -rf /mnt/usr/plymouth
@@ -185,36 +192,67 @@ cp -r /usr/local/share/configs/plymouth /mnt/usr/share/
 arch-chroot /mnt pacman -S ttf-dejavu --noconfirm
 arch-chroot /mnt mkinitcpio -P
 
-echo "Installing Greetd"
+echo "Installing Greetd" > /dev/pts/1
 arch-chroot /mnt su $name -c 'yay -S greetd --noconfirm'
 arch-chroot /mnt su $name -c 'yay -S greetd-tuigreet-bin --noconfirm'
 cp /usr/local/share/configs/greetd.conf /mnt/etc/greetd/config.toml
 arch-chroot /mnt systemctl enable greetd.service
 
-echo "Installing Fonts"
-
+echo "Installing Fonts" > /dev/pts/1
 cp -r /usr/share/fonts/TTF /mnt/usr/share/fonts/
 
-echo "Installing Software"
+echo "Installing feh" > /dev/pts/1
+arch-chroot /mnt pacman -S feh --noconfirm
 
-arch-chroot /mnt pacman -S feh sxiv qutebrowser neovim neomutt cmus boost ncurses --noconfirm
+echo "Installing SXIV" > /dev/pts/1
+arch-chroot /mnt pacman -S sxiv --noconfirm
+
+echo "Installing Qutebrowser" > /dev/pts/1
+arch-chroot /mnt pacman -S qutebrowser --noconfirm
+
+echo "Installing NeoVim" > /dev/pts/1
+arch-chroot /mnt pacman -S neovim --noconfirm
+
+echo "Installing NeoMutt" > /dev/pts/1
+arch-chroot /mnt pacman -S neomutt --noconfirm
+
+echo "Installing CMus" > /dev/pts/1
+arch-chroot /mnt pacman -S cmus --noconfirm
+
+echo "Installing Boost" > /dev/pts/1
+arch-chroot /mnt pacman -S boost ncurses --noconfirm
+
+echo "Installing NCurses" > /dev/pts/1
+arch-chroot /mnt pacman -S ncurses --noconfirm
+
+echo "Installing Mutt-Wizard" > /dev/pts/1
 arch-chroot /mnt su $name -c 'yay -S mutt-wizard --noconfirm'
+
+echo "Installing SFM" > /dev/pts/1
 arch-chroot /mnt git clone https://github.com/NPScript/SFM /usr/src/suckless/sfm
 arch-chroot /mnt make -C /usr/src/suckless/sfm install
+
+echo "Installing Adwaita Theme" > /dev/pts/1
 arch-chroot /mnt pacman -S adwaita-icon-theme --noconfirm
+
+echo "Installing CMus Theme" > /dev/pts/1
 mkdir -p /mnt/home/$name/.config/cmus/
 cp /usr/local/share/configs/cmusrc /mnt/home/$name/.config/cmus/rc
 
-echo "Installing GRUB"
+echo "Installing GRUB" > /dev/pts/1
 
 arch-chroot /mnt pacman -S grub --noconfirm
 arch-chroot /mnt grub-install --target=i386-pc $disk
+
+echo "Configure Grub" > /dev/pts/1
+
+arch-chroot /mnt sed 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*$/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 rd.udev.log_priority=3 rd.systemd.show_status=0 vt.global_cursor_default=0"/g' -i /etc/default/grub
 arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 
-echo "Restart System"
+echo "Restart System" > /dev/pts/1
 umount /mnt
 
-po=$(printf 'yes\nno' | dmenu -p "Poweroff?")
+po=$(printf 'yes\nno' | dmenu -p "Restart?")
 
 if [ $po = "yes" ]; then
 	poweroff
